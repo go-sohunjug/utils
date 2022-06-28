@@ -67,13 +67,16 @@ func New() *Cron {
 	return &Cron{
 		stop: make(chan struct{}),
 		add:  make(chan *Entry),
+		running: false,
 	}
 }
 
 // Start signals cron instant c to get up and running.
 func (c *Cron) Start() {
-	c.running = true
-	ants.Submit(c.run)
+	if !c.running {
+		c.running = true
+		ants.Submit(c.run)
+	}
 }
 
 // Add appends schedule, job to entries.
