@@ -1,6 +1,7 @@
 package gron
 
 import (
+	"fmt"
 	"sort"
 	"time"
 
@@ -11,6 +12,7 @@ import (
 type Entry struct {
 	Schedule Schedule
 	Job      Job
+	Name     string
 
 	// the next time the job will run. This is zero time if Cron has not been
 	// started or invalid schedule.
@@ -30,7 +32,6 @@ func (b byTime) Swap(i, j int) { b[i], b[j] = b[j], b[i] }
 // Less reports `earliest` time i should sort before j.
 // zero time is not `earliest` time.
 func (b byTime) Less(i, j int) bool {
-
 	if b[i].Next.IsZero() {
 		return false
 	}
@@ -59,14 +60,14 @@ type Cron struct {
 	running bool
 	pool    ants.Pool
 	add     chan *Entry
-	stop    chan struct{}
+	stop    chan string
 }
 
 // New instantiates new Cron instant c.
 func New() *Cron {
 	return &Cron{
-		stop: make(chan struct{}),
-		add:  make(chan *Entry),
+		stop:    make(chan string),
+		add:     make(chan *Entry),
 		running: false,
 	}
 }
@@ -84,7 +85,6 @@ func (c *Cron) Start() {
 // if cron instant is not running, adding to entries is trivial.
 // otherwise, to prevent data-race, adds through channel.
 func (c *Cron) Add(s Schedule, j Job) {
-
 	entry := &Entry{
 		Schedule: s,
 		Job:      j,
@@ -102,14 +102,47 @@ func (c *Cron) AddFunc(s Schedule, j func()) {
 	c.Add(s, JobFunc(j))
 }
 
+// Add appends schedule, job to entries.
+//
+// if cron instant is not running, adding to entries is trivial.
+// otherwise, to prevent data-race, adds through channel.
+func (c *Cron) AddHanderJob(n string, s Schedule, j Job) (err error) {
+	for _, e := range c.entries {
+		if e.Name == n {
+			err = fmt.Errorf("hander %s already in scheduler", n)
+			return
+		}
+	}
+	entry := &Entry{
+		Schedule: s,
+		Job:      j,
+		Name:     n,
+	}
+
+	if !c.running {
+		c.entries = append(c.entries, entry)
+		return
+	}
+	c.add <- entry
+	return
+}
+
+// AddFunc registers the Job function for the given Schedule.
+func (c *Cron) AddHandlerFunc(n string, s Schedule, j func()) (err error) {
+	err = c.AddHanderJob(n, s, JobFunc(j))
+	return
+}
+
+func (c *Cron) RemoveHandler(n string) {
+}
+
 // Stop halts cron instant c from running.
 func (c *Cron) Stop() {
-
 	if !c.running {
 		return
 	}
 	c.running = false
-	c.stop <- struct{}{}
+	c.stop <- "_all_jobs_"
 }
 
 var after = time.After
@@ -119,7 +152,6 @@ var after = time.After
 // It needs to be private as it's responsible of synchronizing a critical
 // shared state: `running`.
 func (c *Cron) run() {
-
 	var effective time.Time
 	now := time.Now().Local()
 
@@ -150,8 +182,16 @@ func (c *Cron) run() {
 		case e := <-c.add:
 			e.Next = e.Schedule.Next(time.Now())
 			c.entries = append(c.entries, e)
-		case <-c.stop:
-			return // terminate go-routine.
+		case n := <-c.stop:
+			if n == "_all_jobs_" {
+				return // terminate go-routine.
+			}
+			for i, e := range c.entries {
+				if e.Name == n {
+					c.entries = append(c.entries[:i], c.entries[i+1:]...)
+					return
+				}
+			}
 		}
 	}
 }
