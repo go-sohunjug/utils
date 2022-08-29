@@ -200,6 +200,13 @@ func (c *Cron) run() {
 	}
 }
 
+func (c *Cron) List() (list []string) {
+	for _, e := range c.entries {
+		list = append(list, e.Name)
+	}
+	return list
+}
+
 // Entries returns cron etn
 func (c *Cron) Entries() []*Entry {
 	return c.entries
