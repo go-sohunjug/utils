@@ -134,6 +134,10 @@ func (c *Cron) AddHandlerFunc(n string, s Schedule, j func()) (err error) {
 }
 
 func (c *Cron) RemoveHandler(n string) {
+	if !c.running {
+		return
+	}
+	c.stop <- n
 }
 
 // Stop halts cron instant c from running.
@@ -189,7 +193,7 @@ func (c *Cron) run() {
 			for i, e := range c.entries {
 				if e.Name == n {
 					c.entries = append(c.entries[:i], c.entries[i+1:]...)
-					return
+					break
 				}
 			}
 		}
@@ -197,7 +201,7 @@ func (c *Cron) run() {
 }
 
 // Entries returns cron etn
-func (c Cron) Entries() []*Entry {
+func (c *Cron) Entries() []*Entry {
 	return c.entries
 }
 
