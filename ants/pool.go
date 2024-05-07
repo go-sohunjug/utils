@@ -28,7 +28,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	syncx "github.com/panjf2000/ants/v2/internal/sync"
+	"github.com/go-sohunjug/utils/spinlock"
 )
 
 // Pool accepts the tasks and process them concurrently,
@@ -182,7 +182,7 @@ func NewPool(size int, options ...Option) (*Pool, error) {
 
 	p := &Pool{
 		capacity: int32(size),
-		lock:     syncx.NewSpinLock(),
+		lock:     spinlock.NewSpinLock(),
 		options:  opts,
 	}
 	p.workerCache.New = func() interface{} {

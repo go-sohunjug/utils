@@ -85,24 +85,25 @@ func (c *Cron) Start() {
 //
 // if cron instant is not running, adding to entries is trivial.
 // otherwise, to prevent data-race, adds through channel.
-func (c *Cron) Add(s Schedule, j Job) {
+func (c *Cron) Add(s Schedule, j Job) string {
   uuidV1, _ := uuid.NewUUID()
 	entry := &Entry{
 		Schedule: s,
 		Job:      j,
-    Name: uuidV1,
+    Name: uuidV1.String(),
 	}
 
 	if !c.running {
 		c.entries = append(c.entries, entry)
-		return
+		return uuidV1.String()
 	}
 	c.add <- entry
+  return uuidV1.String()
 }
 
 // AddFunc registers the Job function for the given Schedule.
-func (c *Cron) AddFunc(s Schedule, j func()) {
-	c.Add(s, JobFunc(j))
+func (c *Cron) AddFunc(s Schedule, j func()) string {
+	return c.Add(s, JobFunc(j))
 }
 
 // Add appends schedule, job to entries.
