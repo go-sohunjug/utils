@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/go-sohunjug/utils/ants"
+	"github.com/google/uuid"
 )
 
 // Entry consists of a schedule and the job to be executed on that schedule.
@@ -85,9 +86,11 @@ func (c *Cron) Start() {
 // if cron instant is not running, adding to entries is trivial.
 // otherwise, to prevent data-race, adds through channel.
 func (c *Cron) Add(s Schedule, j Job) {
+  uuidV1, _ := uuid.NewUUID()
 	entry := &Entry{
 		Schedule: s,
 		Job:      j,
+    Name: uuidV1,
 	}
 
 	if !c.running {
