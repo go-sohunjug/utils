@@ -35,6 +35,7 @@ type handler struct {
 
 type event struct {
 	handlerQueueSize int
+	syncQueue        bool
 	mtx              sync.RWMutex
 	handlers         handlersMap
 }
@@ -90,7 +91,13 @@ func (b *event) Subscribe(topic, name string, fn interface{}) error {
 			}
 		}()
 		for args := range h.queue {
-			h.callback.Call(args)
+			if b.syncQueue {
+				h.callback.Call(args)
+			} else {
+				ants.Submit(func() {
+					h.callback.Call(args)
+				})
+			}
 		}
 	})
 
@@ -212,12 +219,13 @@ func buildHandlerArgs(args []interface{}) []reflect.Value {
 
 // New creates new MessageBus
 // handlerQueueSize sets buffered channel length per subscriber
-func New(handlerQueueSize int) Bus {
-	if handlerQueueSize == 0 {
+func New(handlerQueueSize int, syncQueue bool) Bus {
+	if handlerQueueSize <= 0 {
 		panic("handlerQueueSize has to be greater then 0")
 	}
 
 	return &event{
+		syncQueue:        syncQueue,
 		handlerQueueSize: handlerQueueSize,
 		handlers:         make(handlersMap),
 	}
