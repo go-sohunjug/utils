@@ -18,6 +18,7 @@ type Cron struct {
 	chain     Chain
 	stop      chan struct{}
 	add       chan *Entry
+	change    chan *Entry
 	remove    chan interface{}
 	snapshot  chan chan []Entry
 	running   bool
@@ -53,6 +54,7 @@ type EntryID int
 type Entry struct {
 	// ID is the cron-assigned ID of this entry, which may be used to look up a
 	// snapshot or remove it.
+	c  *Cron
 	ID EntryID
 
 	Name string
@@ -161,7 +163,7 @@ func (c *Cron) AddJob(spec string, cmd Job) (EntryID, string, error) {
 }
 
 func (c *Cron) AddHandlerFunc(name, spec string, cmd func()) (EntryID, string, error) {
-	return c.AddJob(spec, FuncJob(cmd))
+	return c.AddHandlerJob(name, spec, FuncJob(cmd))
 }
 
 func (c *Cron) AddHandlerJob(name, spec string, cmd Job) (EntryID, string, error) {
@@ -173,17 +175,29 @@ func (c *Cron) AddHandlerJob(name, spec string, cmd Job) (EntryID, string, error
 	return entry.ID, entry.Name, nil
 }
 
+func (c *Cron) HandlerReset(name string, args ...any) *Entry {
+	c.runningMu.Lock()
+	defer c.runningMu.Unlock()
+	entry := c.Entry(name)
+	if c.Entry(name) == nil {
+		return nil
+	}
+	entry.Update(args...)
+	return entry
+}
+
 // Schedule adds a Job to the Cron to be run on the given schedule.
 // The job is wrapped with the configured Chain.
 func (c *Cron) CreateEntry(schedule Schedule, name string, cmd Job) *Entry {
 	c.runningMu.Lock()
 	defer c.runningMu.Unlock()
-  entry := c.Entry(name)
-  if c.Entry(name) != nil {
-    return entry
-  }
+	entry := c.Entry(name)
+	if c.Entry(name) != nil {
+		return entry
+	}
 	c.nextID++
 	entry = &Entry{
+		c:          c,
 		ID:         c.nextID,
 		Name:       name,
 		Schedule:   schedule,
@@ -198,6 +212,34 @@ func (c *Cron) CreateEntry(schedule Schedule, name string, cmd Job) *Entry {
 	return entry
 }
 
+func (e *Entry) Update(args ...any) {
+	schedule_flag := false
+	for _, arg := range args {
+		if v, ok := arg.(string); ok {
+			schedule, err := e.c.parser.Parse(v)
+			if err != nil {
+				e.Name = v
+			} else {
+				e.Schedule = schedule
+				schedule_flag = true
+			}
+		} else if v, ok := arg.(EntryID); ok {
+			e.ID = v
+		} else if v, ok := arg.(func()); ok {
+			e.Job = FuncJob(v)
+		} else if v, ok := arg.(Job); ok {
+			e.Job = v
+		}
+	}
+	e.c.runningMu.Lock()
+	defer e.c.runningMu.Unlock()
+	if schedule_flag {
+		if e.c.running {
+			e.c.change <- e
+		}
+	}
+}
+
 // Entries returns a snapshot of the cron entries.
 func (c *Cron) Entries() []*Entry {
 	return c.entries
@@ -209,7 +251,7 @@ func (c *Cron) Location() *time.Location {
 }
 
 // Entry returns a snapshot of the given entry, or nil if it couldn't be found.
-func (c *Cron) Entry(id interface{}) *Entry {
+func (c *Cron) Entry(id any) *Entry {
 	for _, entry := range c.entries {
 		if value, ok := id.(EntryID); ok {
 			if value == entry.ID {
@@ -225,7 +267,7 @@ func (c *Cron) Entry(id interface{}) *Entry {
 }
 
 // Remove an entry from being run in the future.
-func (c *Cron) Remove(id interface{}) {
+func (c *Cron) Remove(id any) {
 	c.runningMu.Lock()
 	defer c.runningMu.Unlock()
 	if c.running {
@@ -261,13 +303,13 @@ func (c *Cron) Run() {
 // run the scheduler.. this is private just due to the need to synchronize
 // access to the 'running' state variable.
 func (c *Cron) run() {
-	c.logger.Info("start")
+	c.logger.Infof("start")
 
 	// Figure out the next activation times for each entry.
 	now := c.now()
 	for _, entry := range c.entries {
 		entry.Next = entry.Schedule.Next(now)
-		c.logger.Info("schedule", "now", now, "entry", entry.ID, "next", entry.Next)
+		c.logger.Infof("schedule", "now", now, "entry", entry.ID, "next", entry.Next)
 	}
 
 	for {
@@ -287,7 +329,7 @@ func (c *Cron) run() {
 			select {
 			case now = <-timer.C:
 				now = now.In(c.location)
-				c.logger.Info("wake", "now", now)
+				c.logger.Infof("wake", "now", now)
 
 				// Run every entry whose next time was less than now
 				for _, e := range c.entries {
@@ -297,26 +339,32 @@ func (c *Cron) run() {
 					c.startJob(e.WrappedJob)
 					e.Prev = e.Next
 					e.Next = e.Schedule.Next(now)
-					c.logger.Info("run", "now", now, "entry", e.ID, "next", e.Next)
+					c.logger.Infof("run", "now", now, "entry", e.ID, "next", e.Next)
 				}
+
+			case entry := <-c.change:
+				timer.Stop()
+				now = c.now()
+				entry.Next = entry.Schedule.Next(now)
+				c.logger.Infof("update", "now", now, "entry", entry.ID, "next", entry.Next)
 
 			case newEntry := <-c.add:
 				timer.Stop()
 				now = c.now()
 				newEntry.Next = newEntry.Schedule.Next(now)
 				c.entries = append(c.entries, newEntry)
-				c.logger.Info("added", "now", now, "entry", newEntry.ID, "next", newEntry.Next)
+				c.logger.Infof("added", "now", now, "entry", newEntry.ID, "next", newEntry.Next)
 
 			case <-c.stop:
 				timer.Stop()
-				c.logger.Info("stop")
+				c.logger.Infof("stop")
 				return
 
 			case id := <-c.remove:
 				timer.Stop()
 				now = c.now()
 				c.removeEntry(id)
-				c.logger.Info("removed", "entry", id)
+				c.logger.Infof("removed", "entry", id)
 			}
 
 			break
@@ -355,7 +403,7 @@ func (c *Cron) Stop() context.Context {
 	return ctx
 }
 
-func (c *Cron) removeEntry(id interface{}) {
+func (c *Cron) removeEntry(id any) {
 	var entries []*Entry
 	for _, e := range c.entries {
 		if value, ok := id.(EntryID); ok {

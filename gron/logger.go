@@ -18,9 +18,9 @@ var DiscardLogger Logger = PrintfLogger(log.New(io.Discard, "", 0))
 // can be plugged in. It is a subset of the github.com/go-logr/logr interface.
 type Logger interface {
 	// Info logs routine messages about cron's operation.
-	Info(msg string, keysAndValues ...interface{})
+	Infof(msg string, keysAndValues ...interface{})
 	// Error logs an error condition.
-	Error(err error, msg string, keysAndValues ...interface{})
+	Errorf(err error, msg string, keysAndValues ...interface{})
 }
 
 // PrintfLogger wraps a Printf-based logger (such as the standard library "log")
@@ -40,7 +40,7 @@ type printfLogger struct {
 	logInfo bool
 }
 
-func (pl printfLogger) Info(msg string, keysAndValues ...interface{}) {
+func (pl printfLogger) Infof(msg string, keysAndValues ...interface{}) {
 	if pl.logInfo {
 		keysAndValues = formatTimes(keysAndValues)
 		pl.logger.Printf(
@@ -49,7 +49,7 @@ func (pl printfLogger) Info(msg string, keysAndValues ...interface{}) {
 	}
 }
 
-func (pl printfLogger) Error(err error, msg string, keysAndValues ...interface{}) {
+func (pl printfLogger) Errorf(err error, msg string, keysAndValues ...interface{}) {
 	keysAndValues = formatTimes(keysAndValues)
 	pl.logger.Printf(
 		formatString(len(keysAndValues)+2),
