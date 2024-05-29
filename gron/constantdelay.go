@@ -6,6 +6,7 @@ import "time"
 // It does not support jobs more frequent than once a second.
 type ConstantDelaySchedule struct {
 	Delay time.Duration
+  Once  bool
 }
 
 // Every returns a crontab Schedule that activates once every duration.
@@ -17,11 +18,25 @@ func Every(duration time.Duration) ConstantDelaySchedule {
 	}
 	return ConstantDelaySchedule{
 		Delay: duration - time.Duration(duration.Nanoseconds())%time.Second,
+    Once: false,
+	}
+}
+
+func Once(duration time.Duration) ConstantDelaySchedule {
+	if duration < time.Second {
+		duration = time.Second
+	}
+	return ConstantDelaySchedule{
+		Delay: duration - time.Duration(duration.Nanoseconds())%time.Second,
+    Once: true,
 	}
 }
 
 // Next returns the next time this should be run.
 // This rounds so that the next activation time will be on the second.
 func (schedule ConstantDelaySchedule) Next(t time.Time) time.Time {
+  if schedule.Once {
+    return t
+  }
 	return t.Add(schedule.Delay - time.Duration(t.Nanosecond())*time.Nanosecond)
 }

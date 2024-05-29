@@ -331,21 +331,25 @@ func (c *Cron) run() {
 					c.startJob(e.WrappedJob)
 					e.Prev = e.Next
 					e.Next = e.Schedule.Next(now)
-					c.logger.Infof("run", "now", now, "entry", e.ID, "next", e.Next)
+					if e.Prev == e.Next {
+						c.removeEntry(e.ID)
+						break
+					}
+					c.logger.Infof("run", "now", now, "entry", e.Name, "next", e.Next)
 				}
 
 			case entry := <-c.change:
 				timer.Stop()
 				now = c.now()
 				entry.Next = entry.Schedule.Next(now)
-				c.logger.Infof("update", "now", now, "entry", entry.ID, "next", entry.Next)
+				c.logger.Infof("update", "now", now, "entry", entry.Name, "next", entry.Next)
 
 			case newEntry := <-c.add:
 				timer.Stop()
 				now = c.now()
 				newEntry.Next = newEntry.Schedule.Next(now)
 				c.entries = append(c.entries, newEntry)
-				c.logger.Infof("added", "now", now, "entry", newEntry.ID, "next", newEntry.Next)
+				c.logger.Infof("added", "now", now, "entry", newEntry.Name, "next", newEntry.Next)
 
 			case <-c.stop:
 				timer.Stop()

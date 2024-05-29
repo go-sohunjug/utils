@@ -431,5 +431,13 @@ func parseDescriptor(descriptor string, loc *time.Location) (Schedule, error) {
 		return Every(duration), nil
 	}
 
+	const once = "@once "
+	if strings.HasPrefix(descriptor, once) {
+		duration, err := time.ParseDuration(descriptor[len(once):])
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse duration %s: %s", descriptor, err)
+		}
+		return Once(duration), nil
+	}
 	return nil, fmt.Errorf("unrecognized descriptor: %s", descriptor)
 }
