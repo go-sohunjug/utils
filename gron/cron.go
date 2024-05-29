@@ -38,6 +38,7 @@ type ScheduleParser interface {
 // Job is an interface for submitted cron jobs.
 type Job interface {
 	Run()
+	Name() string
 }
 
 // Schedule describes a job's duty cycle.
@@ -138,41 +139,33 @@ func New(opts ...Option) *Cron {
 }
 
 // FuncJob is a wrapper that turns a func() into a cron.Job
-type FuncJob func()
+type FuncJob struct {
+	n string
+	f func()
+}
 
-func (f FuncJob) Run() { f() }
+func (f FuncJob) Run() { f.f() }
+
+func (f FuncJob) Name() string { return f.n }
 
 // AddFunc adds a func to the Cron to be run on the given schedule.
 // The spec is parsed using the time zone of this Cron instance as the default.
 // An opaque ID is returned that can be used to later remove it.
-func (c *Cron) AddFunc(spec string, cmd func()) (EntryID, string, error) {
-	return c.AddJob(spec, FuncJob(cmd))
-}
-
-// AddJob adds a Job to the Cron to be run on the given schedule.
-// The spec is parsed using the time zone of this Cron instance as the default.
-// An opaque ID is returned that can be used to later remove it.
-func (c *Cron) AddJob(spec string, cmd Job) (EntryID, string, error) {
+func (c *Cron) AddFunc(spec string, cmd func()) *Entry {
 	schedule, err := c.parser.Parse(spec)
 	if err != nil {
-		return 0, "", err
+		return nil
 	}
 	uuidV1, _ := uuid.NewUUID()
-	entry := c.CreateEntry(schedule, uuidV1.String(), cmd)
-	return entry.ID, entry.Name, nil
+	return c.AddJob(schedule, uuidV1.String(), cmd)
 }
 
-func (c *Cron) AddHandlerFunc(name, spec string, cmd func()) (EntryID, string, error) {
-	return c.AddHandlerJob(name, spec, FuncJob(cmd))
-}
-
-func (c *Cron) AddHandlerJob(name, spec string, cmd Job) (EntryID, string, error) {
+func (c *Cron) AddHandlerFunc(name, spec string, cmd func()) *Entry {
 	schedule, err := c.parser.Parse(spec)
 	if err != nil {
-		return 0, "", err
+		return nil
 	}
-	entry := c.CreateEntry(schedule, name, cmd)
-	return entry.ID, entry.Name, nil
+	return c.AddJob(schedule, name, cmd)
 }
 
 func (c *Cron) HandlerReset(name string, args ...any) *Entry {
@@ -188,7 +181,7 @@ func (c *Cron) HandlerReset(name string, args ...any) *Entry {
 
 // Schedule adds a Job to the Cron to be run on the given schedule.
 // The job is wrapped with the configured Chain.
-func (c *Cron) CreateEntry(schedule Schedule, name string, cmd Job) *Entry {
+func (c *Cron) AddJob(schedule Schedule, name string, f func()) *Entry {
 	c.runningMu.Lock()
 	defer c.runningMu.Unlock()
 	entry := c.Entry(name)
@@ -196,6 +189,7 @@ func (c *Cron) CreateEntry(schedule Schedule, name string, cmd Job) *Entry {
 		return entry
 	}
 	c.nextID++
+	cmd := FuncJob{name, f}
 	entry = &Entry{
 		c:          c,
 		ID:         c.nextID,
@@ -226,13 +220,11 @@ func (e *Entry) Update(args ...any) {
 		} else if v, ok := arg.(EntryID); ok {
 			e.ID = v
 		} else if v, ok := arg.(func()); ok {
-			e.Job = FuncJob(v)
+			e.Job = FuncJob{e.Name, v}
 		} else if v, ok := arg.(Job); ok {
 			e.Job = v
 		}
 	}
-	e.c.runningMu.Lock()
-	defer e.c.runningMu.Unlock()
 	if schedule_flag {
 		if e.c.running {
 			e.c.change <- e

@@ -40,7 +40,7 @@ func (c Chain) Then(j Job) Job {
 // Recover panics in wrapped jobs and log them with the provided logger.
 func Recover(logger Logger) JobWrapper {
 	return func(j Job) Job {
-		return FuncJob(func() {
+		return FuncJob{"recover " + j.Name(), func() {
 			defer func() {
 				if r := recover(); r != nil {
 					const size = 64 << 10
@@ -50,11 +50,11 @@ func Recover(logger Logger) JobWrapper {
 					if !ok {
 						err = fmt.Errorf("%v", r)
 					}
-					logger.Errorf(err, "panic", "stack", "...\n"+string(buf))
+					logger.Errorf("panic", "stack", "...\n"+string(buf), err, j.Name())
 				}
 			}()
 			j.Run()
-		})
+		}}
 	}
 }
 
@@ -64,15 +64,15 @@ func Recover(logger Logger) JobWrapper {
 func DelayIfStillRunning(logger Logger) JobWrapper {
 	return func(j Job) Job {
 		var mu sync.Mutex
-		return FuncJob(func() {
+		return FuncJob{"delay " + j.Name(), func() {
 			start := time.Now()
 			mu.Lock()
 			defer mu.Unlock()
 			if dur := time.Since(start); dur > time.Minute {
-				logger.Infof("delay", "duration", dur)
+				logger.Infof("delay", "duration", dur, j.Name())
 			}
 			j.Run()
-		})
+		}}
 	}
 }
 
@@ -82,14 +82,14 @@ func SkipIfStillRunning(logger Logger) JobWrapper {
 	return func(j Job) Job {
 		ch := make(chan struct{}, 1)
 		ch <- struct{}{}
-		return FuncJob(func() {
+		return FuncJob{"skip " + j.Name(), func() {
 			select {
 			case v := <-ch:
 				defer func() { ch <- v }()
 				j.Run()
 			default:
-				logger.Infof("skip")
+				logger.Infof("skip", j.Name())
 			}
-		})
+		}}
 	}
 }

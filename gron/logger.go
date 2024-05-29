@@ -20,7 +20,7 @@ type Logger interface {
 	// Info logs routine messages about cron's operation.
 	Infof(msg string, keysAndValues ...interface{})
 	// Error logs an error condition.
-	Errorf(err error, msg string, keysAndValues ...interface{})
+	Errorf(msg string, keysAndValues ...interface{})
 }
 
 // PrintfLogger wraps a Printf-based logger (such as the standard library "log")
@@ -49,11 +49,11 @@ func (pl printfLogger) Infof(msg string, keysAndValues ...interface{}) {
 	}
 }
 
-func (pl printfLogger) Errorf(err error, msg string, keysAndValues ...interface{}) {
+func (pl printfLogger) Errorf(msg string, keysAndValues ...interface{}) {
 	keysAndValues = formatTimes(keysAndValues)
 	pl.logger.Printf(
 		formatString(len(keysAndValues)+2),
-		append([]interface{}{msg, "error", err}, keysAndValues...)...)
+		append([]interface{}{msg, "error"}, keysAndValues...)...)
 }
 
 // formatString returns a logfmt-like format string for the number of
