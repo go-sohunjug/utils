@@ -1,7 +1,6 @@
 package gron
 
 import (
-	"fmt"
 	"time"
 )
 
@@ -27,30 +26,5 @@ func Every(duration time.Duration) ConstantDelaySchedule {
 // This rounds so that the next activation time will be on the second.
 func (schedule ConstantDelaySchedule) Next(t time.Time) time.Time {
 	// schedule.done = true
-	return t.Add(schedule.Delay - time.Duration(t.Nanosecond())*time.Nanosecond)
-}
-
-type OnceDelaySchedule struct {
-	Delay time.Duration
-	Done  bool
-}
-
-func Once(duration time.Duration) OnceDelaySchedule {
-	if duration < time.Second {
-		duration = time.Second
-	}
-	return OnceDelaySchedule{
-		Delay: duration - time.Duration(duration.Nanoseconds())%time.Second,
-		Done:  false,
-	}
-}
-
-func (schedule OnceDelaySchedule) Next(t time.Time) time.Time {
-	if schedule.Done {
-		fmt.Print(schedule.Done)
-		return t
-	}
-	fmt.Print(schedule.Done)
-	schedule.Done = true
 	return t.Add(schedule.Delay - time.Duration(t.Nanosecond())*time.Nanosecond)
 }

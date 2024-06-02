@@ -176,17 +176,23 @@ func (c *Cron) AddHandlerFunc(name, spec string, cmd func()) {
 }
 
 func (c *Cron) HandlerReset(name string, args ...any) {
+	c.runningMu.Lock()
+	defer c.runningMu.Unlock()
 	entry := c.Entry(name)
 	if c.Entry(name) == nil {
 		return
 	}
-	entry.Update(args...)
+	ants.Submit(func() {
+		entry.Update(args...)
+	})
 	return
 }
 
 // Schedule adds a Job to the Cron to be run on the given schedule.
 // The job is wrapped with the configured Chain.
 func (c *Cron) AddJob(schedule Schedule, name string, f func()) *Entry {
+	c.runningMu.Lock()
+	defer c.runningMu.Unlock()
 	entry := c.Entry(name)
 	if c.Entry(name) != nil {
 		return entry
@@ -316,6 +322,7 @@ func (c *Cron) run() {
 			c.timer = time.NewTimer(c.entries[0].Next.Sub(now))
 		}
 
+		// for {
 		select {
 		case now = <-c.timer.C:
 			now = now.In(c.location)
@@ -329,11 +336,11 @@ func (c *Cron) run() {
 				c.startJob(e.WrappedJob)
 				e.Prev = e.Next
 				e.Next = e.Schedule.Next(now)
+				c.logger.Infof("run", "now", now, "entry", e.Name, "next", e.Next, "schedule", e.Schedule)
 				if e.Next.Equal(now) {
 					c.removeEntry(e.Name)
 					break
 				}
-				c.logger.Infof("run", "now", now, "entry", e.Name, "next", e.Next, "schedule", e.Schedule)
 			}
 
 		case entry := <-c.change:
@@ -347,7 +354,7 @@ func (c *Cron) run() {
 			now = c.now()
 			newEntry.Next = newEntry.Schedule.Next(now)
 			c.entries = append(c.entries, newEntry)
-			c.logger.Infof("added", "now", now, "entry", newEntry.Name, "next", newEntry.Next)
+			c.logger.Infof("added", "now", now, "entry", newEntry.ID, newEntry.Name, "next", newEntry.Next)
 
 		case <-c.stop:
 			c.timer.Stop()
@@ -360,15 +367,16 @@ func (c *Cron) run() {
 			c.removeEntry(id)
 			c.logger.Infof("removed", "entry", id)
 		}
-
+		// 	break
+		// }
 	}
 }
 
 // startJob runs the given job in a new goroutine.
 func (c *Cron) startJob(j Job) {
 	c.jobWaiter.Add(1)
+	defer c.jobWaiter.Done()
 	ants.Submit(func() {
-		defer c.jobWaiter.Done()
 		j.Run()
 	})
 }
