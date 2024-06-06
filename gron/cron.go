@@ -183,7 +183,7 @@ func (c *Cron) HandlerReset(name string, args ...any) {
 		return
 	}
 	ants.Submit(func() {
-		entry.Update(args...)
+		c.update(entry, args...)
 	})
 	return
 }
@@ -215,7 +215,7 @@ func (c *Cron) AddJob(schedule Schedule, name string, f func()) *Entry {
 	return entry
 }
 
-func (e *Entry) Update(args ...any) {
+func (c *Cron) update(e *Entry,args ...any) {
 	schedule_flag := false
 	for _, arg := range args {
 		if v, ok := arg.(string); ok {
@@ -235,8 +235,8 @@ func (e *Entry) Update(args ...any) {
 		}
 	}
 	if schedule_flag {
-		if e.c.running {
-			e.c.change <- e
+		if c.running {
+			c.change <- e
 		}
 	}
 }
