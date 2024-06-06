@@ -123,6 +123,7 @@ func New(opts ...Option) *Cron {
 		chain:     NewChain(),
 		add:       make(chan *Entry, 20),
 		stop:      make(chan struct{}, 20),
+		change:    make(chan *Entry, 20),
 		remove:    make(chan interface{}, 20),
 		running:   false,
 		runningMu: &sync.Mutex{},
@@ -183,7 +184,7 @@ func (c *Cron) HandlerReset(name string, args ...any) {
 		return
 	}
 	ants.Submit(func() {
-		c.update(entry, args...)
+		entry.Update(args...)
 	})
 	return
 }
@@ -215,7 +216,7 @@ func (c *Cron) AddJob(schedule Schedule, name string, f func()) *Entry {
 	return entry
 }
 
-func (c *Cron) update(e *Entry,args ...any) {
+func (e *Entry) Update(args ...any) {
 	schedule_flag := false
 	for _, arg := range args {
 		if v, ok := arg.(string); ok {
@@ -235,8 +236,8 @@ func (c *Cron) update(e *Entry,args ...any) {
 		}
 	}
 	if schedule_flag {
-		if c.running {
-			c.change <- e
+		if e.c.running {
+			e.c.change <- e
 		}
 	}
 }
