@@ -90,6 +90,66 @@ func (t *Watcher) do() {
 	t.last = data
 }
 
+func checkKind(k reflect.Kind) bool {
+	for _, kind := range []reflect.Kind{reflect.Struct, reflect.Map, reflect.Slice, reflect.Array, reflect.Ptr} {
+		if k == kind {
+			return true
+		}
+	}
+	return false
+}
+
+//	func extract(val reflect.Value, data map[string]string) {
+//		switch val.Kind() {
+//		case reflect.Ptr:
+//			elem := val.Elem()
+//			if !elem.CanAddr() {
+//				return
+//			}
+//
+//			if elem.CanInterface() {
+//				extract(reflect.ValueOf(elem.Interface()), data)
+//			}
+//			if checkKind(elem.Kind()) {
+//				extract(elem, data)
+//			}
+//			break
+//		case reflect.Struct:
+//			for i := 0; i < val.NumField(); i++ {
+//				tag := val.Type().Field(i).Tag.Get("vwatch")
+//				if tag != "" && tag != "-" && tag != "_" {
+//					if val.Field(i).CanInterface() {
+//						data[tag] = hash(val.Field(i).Interface())
+//					} else {
+//						data[tag] = hash(val.Field(i))
+//					}
+//				}
+//				if !val.Field(i).CanInterface() {
+//					if checkKind(val.Field(i).Kind()) {
+//						extract(val.Field(i), data)
+//					}
+//					continue
+//				}
+//				extract(reflect.ValueOf(val.Field(i).Interface()), data)
+//			}
+//			break
+//		case reflect.Map:
+//			iter := val.MapRange()
+//			for iter.Next() {
+//				extract(reflect.ValueOf(iter.Value().Interface()), data)
+//			}
+//			break
+//		case reflect.Slice, reflect.Array:
+//			for i := 0; i < val.Len(); i++ {
+//				if val.Index(i).CanInterface() {
+//					extract(reflect.ValueOf(val.Index(i).Interface()), data)
+//				} else {
+//					extract(reflect.ValueOf(val.Index(i)), data)
+//				}
+//			}
+//			break
+//		}
+//	}
 func extract(val reflect.Value, data map[string]string) {
 	switch val.Kind() {
 	case reflect.Ptr:
